@@ -1,0 +1,10 @@
+# Python environment and cache:
+.venv/
+__pycache__/
+
+# Secrets: NEVER put these online (your API key will go here later)
+.env
+
+# Generated output: the script recreates these on every run
+charts/
+briefing.html
