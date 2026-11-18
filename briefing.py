@@ -9,16 +9,72 @@ import matplotlib
 matplotlib.use("Agg")          # draw to files only, without opening windows
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import json
+import anthropic
+from dotenv import load_dotenv
+
 # === Settings
+load_dotenv()   # reads ANTHROPIC_API_KEY from .env
+
+SYSTEM_PROMPT = """You are a financial news analyst writing a short morning briefing for a private investor.
+You receive the latest numbers for a watchlist. Your job is to explain WHY the significant moves happened.
+
+Rules:
+- Only explain the funds listed under SIGNIFICANT MOVES. The other funds are context.
+- Search efficiently: at most two searches per significant fund. If several funds moved in the
+  same direction on the same day, first do one search for a market-wide cause.
+- Search for news from the trading day of the close (the date is given per fund), not from today.
+- Base every explanation on what you found. Write "likely" or "possibly" when a cause is not confirmed.
+- If you cannot find a clear reason, say so. Never invent one.
+- Never give buy or sell advice.
+- Keep each explanation to 2-3 sentences of plain English.
+- Only state figures that appear in your sources, and make sure they are for the right day.
+- Briefly mention a major theme from the past week if it explains today's move.
+- Confirm the main cause of each move with at least two independent sources
+  (different websites). Copies of the same news agency report (e.g. Reuters) count as
+  one source. If you can only find one source, say so in the explanation.
+- If your sources disagree, mention both views.
+- Do not describe your search process or your sources in the explanation text.
+  Put the URLs in the "sources" list only.
+- The figures in the input are correct closing data. Do not look up or contradict them;
+  use your sources only to explain the cause. Ignore figures from intraday or opening reports.
+
+When you are done, answer with ONLY a JSON object in exactly this format, with no text before or after it:
+{"market_summary": "one or two sentences about the market as a whole",
+ "explanations": {"SYMBOL": {"text": "your explanation", "sources": ["https://..."]}}}
+"""
+
+AGENT_MODEL = "claude-haiku-5-5"
+
+PRICES = {  # $ per million tokens: (input, output)
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-opus-5-5": (4.00, 20.00),
+}
+PRICE_SEARCH = 0.01
 
 FUNDS = [
-    {"name": "AEX", "symbol": "^AEX"},
-    {"name": "S&P 500", "symbol": "^GSPC"},
-    {"name": "VanEck Defense", "symbol": "DFEN.DE"},
-    {"name": "Vanguard FTSE Dev. Europe", "symbol": "VEUR.AS"},
-    {"name": "NVIDIA", "symbol": "NVDA"},
-    {"name": "Avantium N.V.", "symbol": "AVTX.AS"},
-    {"name": "Sif Holding N.V.","symbol": "SIFG.AS"},
+    {"name": "AEX", "symbol": "^AEX",
+     "about": "Main Dutch index: 30 largest companies on Euronext Amsterdam. ASML is the biggest weight, "
+              "so chip news often moves it. Also Shell, ING, Unilever."},
+    {"name": "S&P 500", "symbol": "^GSPC",
+     "about": "500 large US companies, dominated by big tech. Moves on US interest rates, "
+              "inflation data and big tech earnings."},
+    {"name": "VanEck Defense", "symbol": "DFEN.DE",
+     "about": "Global defense and cybersecurity companies, e.g. Rheinmetall, Thales, Palantir. "
+              "Moves on defense budgets, NATO spending, conflicts and peace talks."},
+    {"name": "Vanguard FTSE Dev. Europe", "symbol": "VEUR.AS",
+     "about": "Broad fund of large and mid-sized companies in developed Europe. Moves on European "
+              "economic data, ECB interest rates and trade policy."},
+    {"name": "NVIDIA", "symbol": "NVDA",
+     "about": "US chip designer, market leader in AI data-center chips. Moves on AI demand, "
+              "big tech investment plans, quarterly results and US export rules for China."},
+    {"name": "Avantium N.V.", "symbol": "AVTX.AS",
+     "about": "Dutch small cap making FDCA for the plant-based plastic PEF. Starting up its first "
+              "commercial plant in Delfzijl. Moves on plant progress, financing and offtake/licensing deals."},
+    {"name": "Sif Holding N.V.", "symbol": "SIFG.AS",
+     "about": "Dutch maker of steel monopile foundations for offshore wind, factory in Rotterdam. "
+              "Moves on offshore wind contracts, production output, financing and sector news."},
 ]
 
 SIGMA_THRESHOLD = 2
@@ -27,7 +83,6 @@ CHART_DIR = Path(__file__).parent / "charts"
 # C:\Users\lauva\Documents\Market_briefing\charts   
 PAGE_FILE = Path(__file__).parent / "briefing.html"        
 
-# === Calculation of the change
 
 CSS = """
 body { margin: 0; background: #F2F4F5; color: #1A1E27;
@@ -212,11 +267,13 @@ def make_charts(result):
 
 results = []
 
+
 for fund in FUNDS:
     result = analyze(fund["symbol"])
     if result is None:
         continue                     # skip this fund, go to the next one
     result["name"] = fund["name"]
+    result["about"] = fund.get("about", "")
     result["chart"] = make_charts(result)
     results.append(result)
 
@@ -227,6 +284,75 @@ for r in results:
     pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
     print(f"{r['name']:<27} {r['trend']:<10} P/E: {pe_text}")
 
+
+def describe_fund(r):
+    """One fund as a few lines of plain text, for the agent to read."""
+    pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
+    return (
+        f"{r['name']} ({r['symbol']}): {r['about']}\n"
+        f"  Close of {r['date']:%A %d %B %Y}: {r['close']:.2f}\n"
+        f"  Change: 1 day {r['change_1d']:+.2f}%, 1 week {r['change_1w']:+.2f}%, "
+        f"1 month {r['change_1m']:+.2f}%, 3 months {r['change_3m']:+.2f}%, YTD {r['change_ytd']:+.2f}%\n"
+        f"  Daily move compared to normal: {r['z']:+.1f} sigma. Trend: {r['trend']}. "
+        f"{r['from_high']:.1f}% from 52-week high. P/E: {pe_text}"
+    )
+
+
+def build_agent_input(results):
+    """Everything the agent needs to know, as one piece of text."""
+    significant = [r for r in results if r["significant"]]
+    others = [r for r in results if not r["significant"]]
+    text = "SIGNIFICANT MOVES (explain these):\n\n"
+    text += "\n\n".join(describe_fund(r) for r in significant)
+    text += "\n\nOTHER FUNDS (context only, to judge whether a move is market-wide):\n"
+    text += "\n".join(f"- {r['name']}: {r['change_1d']:+.2f}% on {r['date']:%d %b}" for r in others)
+    return text
+
+
+def ask_agent(agent_input, max_searches):
+    """Send the numbers to the agent, let it search the web, and return its explanations."""
+    client = anthropic.Anthropic()
+    messages = [{"role": "user", "content": agent_input}]
+    tokens_in = tokens_out = searches = 0
+
+    for _ in range(3):  # the agent may pause during a long search session; then we let it continue
+        response = client.messages.create(
+            model=AGENT_MODEL,
+            max_tokens=4000,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+          tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],)
+        tokens_in += response.usage.input_tokens
+        tokens_out += response.usage.output_tokens
+        if response.usage.server_tool_use:
+            searches += response.usage.server_tool_use.web_search_requests
+        if response.stop_reason != "pause_turn":
+            break
+        messages = [messages[0], {"role": "assistant", "content": response.content}]
+        if response.stop_reason == "max_tokens":
+            print("Warning: the agent's answer was cut off because it reached max_tokens.")
+
+    price_in, price_out = PRICES[AGENT_MODEL]
+    cost = tokens_in * price_in / 1e6 + tokens_out * price_out / 1e6 + searches * PRICE_SEARCH
+    print(f"Agent: {searches} searches, {tokens_in} tokens in, {tokens_out} out, cost ${cost:.4f}")
+
+    # The answer can be split over several text blocks: glue them together
+    text = "".join(block.text for block in response.content if block.type == "text")
+    try:
+        return json.loads(text[text.find("{"): text.rfind("}") + 1])
+    except json.JSONDecodeError:
+        print("Could not read the agent's answer as JSON. Raw answer:")
+        print(text)
+        return None
+
+significant = [r for r in results if r["significant"]]
+max_searches = min(2 * len(significant) + 1, 8)
+agent_answer = None
+if significant:
+    agent_answer = ask_agent(build_agent_input(results), max_searches)
+    print(json.dumps(agent_answer, indent=2))
+else:
+    print("No significant moves: the agent is not called.")
 
 def pct(value):
     """Format a percentage with a + or - sign, coloured green or red."""
