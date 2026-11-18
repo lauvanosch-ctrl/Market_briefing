@@ -10,6 +10,8 @@ matplotlib.use("Agg")          # draw to files only, without opening windows
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import json
+from html import escape        # makes AI text safe to put in HTML
+from urllib.parse import urlparse
 import anthropic
 from dotenv import load_dotenv
 
@@ -42,6 +44,7 @@ Rules:
 When you are done, answer with ONLY a JSON object in exactly this format, with no text before or after it:
 {"market_summary": "one or two sentences about the market as a whole",
  "explanations": {"SYMBOL": {"text": "your explanation", "sources": ["https://..."]}}}
+ Use the symbol exactly as written in brackets in the input, including any ^ (e.g. "^AEX").
 """
 
 AGENT_MODEL = "claude-haiku-5-5"
@@ -85,42 +88,113 @@ PAGE_FILE = Path(__file__).parent / "briefing.html"
 
 
 CSS = """
-body { margin: 0; background: #F2F4F5; color: #1A1E27;
+:root { --bg: #121826; --surface: #1B2333; --border: #2A3446; --text: #E6EAF2; --muted: #8B95A7;
+        --up: #34C77B; --down: #F2555A; --accent: #8B7CFF; --alert: #FFC93C; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--text);
        font-family: "Segoe UI", system-ui, sans-serif; line-height: 1.5; }
-main { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-h1 { font-size: 2.2rem; margin: 0; }
-.subtitle { color: #5D6472; margin: 0.25rem 0 2rem; }
-.fund { border-top: 1px solid #D3D8DE; }
-.fund-head { display: flex; justify-content: space-between; align-items: baseline;
-             flex-wrap: wrap; gap: 0.5rem; padding: 1.25rem 0; cursor: pointer; list-style: none; }
+main { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2.8rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.subtitle { color: var(--muted); margin: 0.25rem 0 2rem; }
+a { color: #A99CFF; }
+
+/* direction colour: every fund and tile gets pos or neg from today's move */
+.pos { --c: var(--up); }
+.neg { --c: var(--down); }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+/* summary and watchlist */
+.summary { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+           padding: 1rem 1.25rem; margin: 0 0 1.5rem; }
+.summary h2, .why h3, .watch-head h2 { font-size: 1.3rem; font-weight: 700; }
+.summary h2 { margin: 0 0 0.4rem; }
+.summary p { margin: 0; }
+.ai-label { color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem !important; }
+.watch-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; }
+.watch-head h2 { margin: 0; }
+.watch-head span { color: var(--muted); font-size: 0.85rem; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 2rem; }
+.tile { display: block; text-decoration: none; color: var(--text); background: var(--surface);
+        border: 1px solid var(--border); border-left: 4px solid var(--c); border-radius: 8px;
+        padding: 0.65rem 0.8rem; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.tile:hover { background: color-mix(in srgb, var(--c) 14%, var(--surface)); border-color: var(--c);
+              box-shadow: 0 0 18px color-mix(in srgb, var(--c) 35%, transparent); }
+.tile:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+.tile-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
+.tile-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-price { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.tile-change { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+/* one fund */
+.group-title { color: var(--muted); font-size: 0.85rem; font-weight: 600; margin: 2rem 0 0.5rem; }
+.fund { border-top: 1px solid var(--border); scroll-margin-top: 1rem; }
+.fund-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+             gap: 0.5rem; padding: 1rem 0.5rem 1rem 0.9rem; cursor: pointer; list-style: none;
+             border-left: 4px solid transparent; border-radius: 0 6px 6px 0;
+             transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
 .fund-head::-webkit-details-marker { display: none; }
+.fund-head h2 { font-size: 1.7rem; margin: 0; transition: color 0.15s; }
 .fund-head h2::before { content: ""; display: inline-block; width: 0.4em; height: 0.4em;
                         margin-right: 0.7em; vertical-align: 0.2em;
-                        border-right: 2px solid #5D6472; border-bottom: 2px solid #5D6472;
-                        transform: rotate(-45deg); transition: transform 0.15s; }
+                        border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+                        transform: rotate(-45deg); transition: transform 0.15s, border-color 0.15s; }
 .fund[open] .fund-head h2::before { transform: rotate(45deg); }
-.fund-head:hover h2 { color: #4B2BD6; }
-.fund-head:focus-visible { outline: 2px solid #4B2BD6; outline-offset: 4px; }
-.tag { font-size: 0.8rem; font-weight: 600; color: #5D6472; margin-left: 0.5rem; }
-.fund-body { padding-bottom: 1.75rem; }
-.price { margin: 0; font-size: 1.4rem; font-weight: 700; }
-.up { color: #0F7B4F; }
-.down { color: #C2362F; }
-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 1rem 0;
-        font-variant-numeric: tabular-nums; }
-th, td { padding: 0.4rem 0.5rem 0.4rem 0; text-align: left; border-bottom: 1px solid #E3E6EA; }
-th { color: #5D6472; font-weight: 600; font-size: 0.85rem; }
-.note { padding: 0.6rem 1rem; border-radius: 6px; margin: 1rem 0; }
-.significant { background: #EDE8FF; border-left: 4px solid #4B2BD6; }
-.stale { background: #FFF4E0; border-left: 4px solid #C77700; font-size: 0.9rem; }
-img { width: 100%; height: auto; }
-.footnote { color: #5D6472; font-size: 0.85rem; border-top: 1px solid #D3D8DE; padding-top: 1rem; }
-@media (max-width: 500px) { th, td { font-size: 0.8rem; } }
+.fund-head:hover { border-left-color: var(--c); background: color-mix(in srgb, var(--c) 9%, transparent);
+                   box-shadow: 0 0 22px color-mix(in srgb, var(--c) 22%, transparent); }
+.fund-head:hover h2 { color: var(--c); }
+.fund-head:hover h2::before { border-color: var(--c); }
+.fund-head:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+.tag { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-left: 0.5rem; }
+.tag.sigma { color: var(--c); }
 .alert { display: inline-flex; align-items: center; justify-content: center;
          width: 1.25em; height: 1.25em; margin-left: 0.6rem; border-radius: 50%;
-         background: #FFC93C; color: #1A1E27; font-size: 0.85rem; font-weight: 800;
+         background: var(--alert); color: #1A1E27; font-size: 0.85rem; font-weight: 800;
          vertical-align: 0.15em; }
+.price { margin: 0; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fund-body { padding: 0 0 1.5rem 0.9rem; }
+
+.why { background: var(--surface); border-left: 4px solid var(--accent); border-radius: 6px;
+       padding: 0.8rem 1rem; margin: 0 0 1rem; }
+.why h3 { margin: 0 0 0.3rem; }
+.why p { margin: 0; }
+.sources { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem !important; }
+.sources a { margin-right: 0.6rem; }
+.stale { background: #3A2E14; border-left: 4px solid #C77700; color: #F2D9A6; font-size: 0.9rem;
+         padding: 0.6rem 1rem; border-radius: 6px; margin: 0 0 1rem; }
+
+.chart { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+         padding: 0.5rem 0.75rem; margin: 0 0 0.5rem; }
+img { display: block; width: 100%; height: auto; }
+
+.group { color: var(--muted); font-size: 0.8rem; font-weight: 600; margin: 1.1rem 0 0.4rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 0.6rem; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+        padding: 0.55rem 0.75rem; }
+.stat-label { color: var(--muted); font-size: 0.78rem; }
+.stat-value { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-sub { color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.back { margin: 1.25rem 0 0; font-size: 0.85rem; }
+
+.footnote { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border);
+            padding-top: 1rem; margin-top: 2rem; }
 """
+
+SCRIPT = """
+document.querySelectorAll(".tile").forEach(function (tile) {
+  tile.addEventListener("click", function () {
+    var fund = document.querySelector(tile.getAttribute("href"));
+    if (fund) fund.open = true;      // a closed fund opens when you jump to it
+  });
+});
+"""
+
+def slug(symbol):
+    """Symbol made safe for file names and HTML ids, e.g. ^AEX -> AEX, DFEN.DE -> DFEN_DE."""
+    return symbol.replace("^", "").replace(".", "_")
+
 
 def change_since(close,offset):
     latest=close.iloc[-1]
@@ -242,25 +316,43 @@ def make_charts(result):
     ma50 = result["ma50_series"].loc[start:]
     ma200 = result["ma200_series"].loc[start:]
 
+    # colours that match the dark page
+    text_color, grid_color, line_color = "#8B95A7", "#2A3446", "#8B7CFF"
+
     # matplotlib handles dates without a time zone best, so we strip it for the chart
     dates = close.index.tz_localize(None)
-    fig,ax=plt.subplots(figsize=(8,3.2))
-    ax.plot(dates, close, color="#4B2BD6", linewidth=2, label="Closing price")
-    ax.plot(dates, ma50, color="#C77700", linewidth=1.5, label="50-day average")
-    ax.plot(dates,ma200,color="#00897B",linewidth=1.5,label="200-day average")
 
-    ax.set_title(result["name"], loc="left", fontsize=13, fontweight="bold", pad=28)
-    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, frameon=False, fontsize=9)
-    ax.grid(axis="y", color="#E3E6EA", linewidth=0.8)
+    # y-range: fit the price and both averages, with a little air below the lowest value
+    values = pd.concat([close, ma50, ma200]).dropna()
+    low, high = values.min(), values.max()
+    bottom = low - 0.05 * (high - low)
+
+    fig, ax = plt.subplots(figsize=(8, 3.6))
+    ax.plot(dates, ma200, color="#4FC3D9", linewidth=1.2, linestyle="--", alpha=0.85, label="200-day average")
+    ax.plot(dates, ma50, color="#F5B94A", linewidth=1.2, linestyle="--", alpha=0.85, label="50-day average")
+    ax.plot(dates, close, color=line_color, linewidth=2, label="Closing price")
+    ax.fill_between(dates, close, bottom, color=line_color, alpha=0.13)   # soft fill under the price
+    ax.set_ylim(bottom, high + 0.05 * (high - low))
+
+    # dot and label on the last close (no chart title: the name is in the header)
+    last = close.iloc[-1]
+    ax.plot(dates[-1], last, "o", color=line_color, markersize=6)
+    ax.annotate(f"{last:,.2f}", (dates[-1], last), xytext=(-8, 10), textcoords="offset points",
+                ha="right", color="#E6EAF2", fontsize=9, fontweight="bold")
+
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, frameon=False, fontsize=9,
+              labelcolor=text_color)
+    ax.grid(axis="y", color=grid_color, linewidth=0.8)
+    ax.set_axisbelow(True)
     ax.spines[["top", "right", "left"]].set_visible(False)
-    ax.tick_params(length=0, labelsize=9, colors="#5D6472")
+    ax.spines["bottom"].set_color(grid_color)
+    ax.tick_params(length=0, labelsize=9, colors=text_color)
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
 
     CHART_DIR.mkdir(exist_ok=True)
-    safe_name = result["symbol"].replace("^", "").replace(".", "_")
-    path = CHART_DIR / f"{safe_name}.svg"
-    fig.savefig(path, bbox_inches="tight")
+    path = CHART_DIR / f"{slug(result['symbol'])}.svg"
+    fig.savefig(path, bbox_inches="tight", transparent=True)
     plt.close(fig)
     return path
 
@@ -276,6 +368,9 @@ for fund in FUNDS:
     result["about"] = fund.get("about", "")
     result["chart"] = make_charts(result)
     results.append(result)
+
+# Significant funds first. sort() is stable: within each group the FUNDS order is kept.
+results.sort(key=lambda r: not r["significant"])
 
 # Print a summary table
 for r in results:
@@ -326,11 +421,11 @@ def ask_agent(agent_input, max_searches):
         tokens_out += response.usage.output_tokens
         if response.usage.server_tool_use:
             searches += response.usage.server_tool_use.web_search_requests
+        if response.stop_reason == "max_tokens":
+            print("Warning: the agent's answer was cut off because it reached max_tokens.")
         if response.stop_reason != "pause_turn":
             break
         messages = [messages[0], {"role": "assistant", "content": response.content}]
-        if response.stop_reason == "max_tokens":
-            print("Warning: the agent's answer was cut off because it reached max_tokens.")
 
     price_in, price_out = PRICES[AGENT_MODEL]
     cost = tokens_in * price_in / 1e6 + tokens_out * price_out / 1e6 + searches * PRICE_SEARCH
@@ -360,55 +455,163 @@ def pct(value):
     return f'<span class="{css_class}">{value:+.2f}%</span>'
 
 
-def fund_section(r, newest_date):
+def sources_html(urls):
+    """Turn a list of URLs into short links. Only http(s) links are allowed."""
+    if not isinstance(urls, list):
+        return ""
+    links = []
+    seen = set()
+    for url in urls:
+        if not isinstance(url, str):
+            continue
+        parts = urlparse(url)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            continue                                  # skip anything that is not a normal web link
+        name = parts.netloc.removeprefix("www.")
+        if name in seen:
+            continue                                  # show each website only once
+        seen.add(name)
+        links.append(f'<a href="{escape(url, quote=True)}" target="_blank" '
+                     f'rel="noopener noreferrer">{escape(name)}</a>')
+    if not links:
+        return ""
+    return f'<p class="sources">Sources: {" ".join(links)}</p>'
+
+
+def summary_html(agent_answer, significant):
+    """The 'Today in brief' block at the top of the page."""
+    if not significant:
+        text = "No significant moves today. All funds moved within their normal range."
+        label = ""
+    else:
+        summary = agent_answer.get("market_summary") if isinstance(agent_answer, dict) else None
+        if isinstance(summary, str) and summary.strip():
+            text = escape(summary)
+            label = '<p class="ai-label">Written by an AI agent from news sources. Check the links below.</p>'
+        else:
+            text = "The AI explanation is not available today. The numbers and charts below are not affected."
+            label = ""
+    return f'<section class="summary"><h2>Today in brief</h2><p>{text}</p>{label}</section>'
+
+
+def why_html(r, agent_answer):
+    """The 'Why it moved' block of one significant fund."""
+    explanations = agent_answer.get("explanations") if isinstance(agent_answer, dict) else None
+    entry = None
+    if isinstance(explanations, dict):
+        # The agent sometimes drops the ^ or uses the name, so try all three
+        for key in (r["symbol"], r["symbol"].lstrip("^"), r["name"]):
+            if key in explanations:
+                entry = explanations[key]
+                break
+    text = entry.get("text") if isinstance(entry, dict) else None
+    if isinstance(text, str) and text.strip():
+        body = f'<p>{escape(text)}</p>{sources_html(entry.get("sources"))}'
+    elif agent_answer is None:
+        body = "<p>The explanation is not available today.</p>"
+    else:
+        body = "<p>No explanation found.</p>"
+    return f'<div class="why"><h3>Why it moved</h3>{body}</div>'
+
+
+def stat(label, value, sub=""):
+    """One small card with a label, a big value and an optional line below."""
+    sub_html = f'<div class="stat-sub">{sub}</div>' if sub else ""
+    return (f'<div class="stat"><div class="stat-label">{label}</div>'
+            f'<div class="stat-value">{value}</div>{sub_html}</div>')
+
+
+def vs_average(price, average):
+    """'price +2.1%' relative to a moving average, or '' if the average does not exist."""
+    if pd.isna(average):
+        return ""
+    return f"price {pct((price / average - 1) * 100)}"
+
+
+def direction(r):
+    """'pos' or 'neg': the colour of a fund follows its move on the last day."""
+    return "pos" if r["change_1d"] >= 0 else "neg"
+
+
+def fund_section(r, newest_date, agent_answer):
     """Build the HTML for one fund."""
     pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
 
     stale_note = ""
     if r["date"].date() < newest_date:
-        stale_note = (f'<p class="note stale">This fund shows the close of {r["date"]:%d %b}. '
+        stale_note = (f'<p class="stale">This fund shows the close of {r["date"]:%d %b}. '
                       f'A newer close was not available yet.</p>')
 
-    significant_note = ""
-    if r["significant"]:
-        significant_note = (f'<p class="note significant"><strong>Significant move '
-                            f'({r["z"]:+.1f}σ).</strong> The explanation will be added in step 2.</p>')
-
+    why = why_html(r, agent_answer) if r["significant"] else ""
     open_attr = " open" if r["significant"] else ""
 
     tag = ""
     if r["significant"]:
-            tag = (f'<span class="alert" title="Significant move">!</span>'
-               f'<span class="tag">{r["z"]:+.1f}σ</span>')
+        tag = (f'<span class="alert" title="Significant move">!</span>'
+               f'<span class="tag sigma">{r["z"]:+.1f}σ</span>')
     elif r["date"].date() < newest_date:
         tag = f'<span class="tag">{r["date"]:%d %b}</span>'
 
+    performance = "".join([
+        stat("1 week", pct(r["change_1w"])),
+        stat("1 month", pct(r["change_1m"])),
+        stat("3 months", pct(r["change_3m"])),
+        stat("YTD", pct(r["change_ytd"])),
+        stat("From 52-week high", pct(r["from_high"])),
+    ])
+    trend = "".join([
+        stat("Trend", r["trend"]),
+        stat("50-day average", f"{r['ma50']:,.2f}", vs_average(r["close"], r["ma50"])),
+        stat("200-day average", f"{r['ma200']:,.2f}", vs_average(r["close"], r["ma200"])),
+        stat("P/E", pe_text),
+    ])
+
     return f"""
-<details class="fund"{open_attr}>
+<details class="fund {direction(r)}" id="fund-{slug(r['symbol'])}"{open_attr}>
   <summary class="fund-head">
     <h2>{r['name']}{tag}</h2>
     <p class="price">{r['close']:,.2f} {pct(r['change_1d'])}</p>
   </summary>
   <div class="fund-body">
     {stale_note}
-    {significant_note}
-    <table>
-      <tr><th>1 week</th><th>1 month</th><th>3 months</th><th>YTD</th><th>From 52-week high</th></tr>
-      <tr><td>{pct(r['change_1w'])}</td><td>{pct(r['change_1m'])}</td><td>{pct(r['change_3m'])}</td>
-          <td>{pct(r['change_ytd'])}</td><td>{pct(r['from_high'])}</td></tr>
-    </table>
-    <table>
-      <tr><th>Trend</th><th>50-day average</th><th>200-day average</th><th>P/E</th></tr>
-      <tr><td>{r['trend']}</td><td>{r['ma50']:,.2f}</td><td>{r['ma200']:,.2f}</td><td>{pe_text}</td></tr>
-    </table>
-    <img src="charts/{r['chart'].name}" alt="Price of {r['name']} over the last year, with 50- and 200-day averages">
+    {why}
+    <div class="chart"><img src="charts/{r['chart'].name}" alt="Price of {r['name']} over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats">{performance}</div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats">{trend}</div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
   </div>
 </details>"""
 
-def build_page(results):
+
+def overview_html(results):
+    """The watchlist: one tile per fund, A to Z. Each tile links to its fund below."""
+    tiles = []
+    for r in sorted(results, key=lambda r: r["name"].lower()):
+        mark = '<span class="alert" title="Significant move">!</span>' if r["significant"] else ""
+        tiles.append(
+            f'<a class="tile {direction(r)}" href="#fund-{slug(r["symbol"])}">'
+            f'<div class="tile-top"><span class="tile-name">{r["name"]}</span>{mark}</div>'
+            f'<div class="tile-price">{r["close"]:,.2f}</div>'
+            f'<div class="tile-change">{pct(r["change_1d"])}</div></a>')
+    n_significant = sum(1 for r in results if r["significant"])
+    return (f'<section id="watchlist"><div class="watch-head"><h2>Watchlist</h2>'
+            f'<span>{len(results)} funds · {n_significant} significant</span></div>'
+            f'<div class="tiles">{"".join(tiles)}</div></section>')
+
+
+def build_page(results, agent_answer):
     """Put all funds on one HTML page and save it."""
     newest_date = max(r["date"].date() for r in results)
-    sections = "\n".join(fund_section(r, newest_date) for r in results)
+    significant = [r for r in results if r["significant"]]
+    others = [r for r in results if not r["significant"]]
+
+    sections = "\n".join(fund_section(r, newest_date, agent_answer) for r in significant)
+    if others:
+        if significant:
+            sections += '\n<p class="group-title">Other funds</p>'
+        sections += "\n".join(fund_section(r, newest_date, agent_answer) for r in others)
     created = pd.Timestamp.now(tz="Europe/Amsterdam")
 
     html = f"""<!DOCTYPE html>
@@ -423,18 +626,24 @@ def build_page(results):
 <main>
   <h1>Market briefing</h1>
   <p class="subtitle">Closing prices up to {newest_date:%A %d %B %Y}. Generated on {created:%d %B %Y at %H:%M}.</p>
+  {summary_html(agent_answer, significant)}
+  {overview_html(results)}
   {sections}
   <p class="footnote">
     A move is significant when it is at least {SIGMA_THRESHOLD} standard deviations (σ) away from the
     average daily move of the previous 60 trading days. YTD is the change since the last close of
-    the previous year. Data: Yahoo Finance.
+    the previous year. Colours show the move on the last trading day: green is up, red is down.
+    Data: Yahoo Finance. The explanations are written by an AI agent ({AGENT_MODEL}) that searches
+    the web; they can contain mistakes, so check the sources. This page explains what happened
+    and is not investment advice.
   </p>
 </main>
+<script>{SCRIPT}</script>
 </body>
 </html>"""
 
     PAGE_FILE.write_text(html, encoding="utf-8")
     return PAGE_FILE
 
-page = build_page(results)
+page = build_page(results, agent_answer)
 print(f"Briefing saved: {page}")
