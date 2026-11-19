@@ -14,6 +14,7 @@ from html import escape        # makes AI text safe to put in HTML
 from urllib.parse import urlparse
 import anthropic
 from dotenv import load_dotenv
+from datetime import date
 
 # === Settings
 load_dotenv()   # reads ANTHROPIC_API_KEY from .env
@@ -27,6 +28,8 @@ Rules:
   same direction on the same day, first do one search for a market-wide cause.
 - Search for news from the trading day of the close (the date is given per fund), not from today.
 - Base every explanation on what you found. Write "likely" or "possibly" when a cause is not confirmed.
+- After searching, open the 2-3 most relevant articles with web_fetch and base your explanation
+  on their full text, not on the short search snippets.
 - If you cannot find a clear reason, say so. Never invent one.
 - Never give buy or sell advice.
 - Keep each explanation to 2-3 sentences of plain English.
@@ -48,6 +51,8 @@ When you are done, answer with ONLY a JSON object in exactly this format, with n
 """
 
 AGENT_MODEL = "claude-haiku-5-5"
+AGENT_EFFORT = "high"   # how hard the agent thinks: "low", "medium" (default) or "high"
+MAX_FETCHES = 5         # how many full articles the agent may read per run
 
 PRICES = {  # $ per million tokens: (input, output)
     "claude-haiku-5-5": (0.10, 0.50),
@@ -416,7 +421,7 @@ def build_agent_input(results):
     """Everything the agent needs to know, as one piece of text."""
     significant = [r for r in results if r["significant"]]
     others = [r for r in results if not r["significant"]]
-    text = "SIGNIFICANT MOVES (explain these):\n\n"
+    text = f"Today is {date.today():%A %d %B %Y}.\n\nSIGNIFICANT MOVES (explain these):\n\n"
     text += "\n\n".join(describe_fund(r) for r in significant)
     text += "\n\nOTHER FUNDS (context only, to judge whether a move is market-wide):\n"
     text += "\n".join(f"- {r['name']}: {r['change_1d']:+.2f}% on {r['date']:%d %b}" for r in others)
@@ -427,19 +432,29 @@ def ask_agent(agent_input, max_searches):
     """Send the numbers to the agent, let it search the web, and return its explanations."""
     client = anthropic.Anthropic()
     messages = [{"role": "user", "content": agent_input}]
-    tokens_in = tokens_out = searches = 0
+    tokens_in = tokens_out = searches = fetches= 0
 
     for _ in range(3):  # the agent may pause during a long search session; then we let it continue
         response = client.messages.create(
             model=AGENT_MODEL,
-            max_tokens=4000,
+            max_tokens=8000,
             system=SYSTEM_PROMPT,
             messages=messages,
-          tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],)
+            output_config={"effort": AGENT_EFFORT},
+            tools=[
+                {"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches},
+                {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": MAX_FETCHES,
+                 "max_content_tokens": 5000},
+            ],
+        )
+        if response.stop_reason == "refusal":
+            print("The agent declined this request; the page is built without explanations.")
+            return None
         tokens_in += response.usage.input_tokens
         tokens_out += response.usage.output_tokens
         if response.usage.server_tool_use:
             searches += response.usage.server_tool_use.web_search_requests
+            fetches += response.usage.server_tool_use.web_fetch_requests
         if response.stop_reason == "max_tokens":
             print("Warning: the agent's answer was cut off because it reached max_tokens.")
         if response.stop_reason != "pause_turn":
@@ -448,8 +463,7 @@ def ask_agent(agent_input, max_searches):
 
     price_in, price_out = PRICES[AGENT_MODEL]
     cost = tokens_in * price_in / 1e6 + tokens_out * price_out / 1e6 + searches * PRICE_SEARCH
-    print(f"Agent: {searches} searches, {tokens_in} tokens in, {tokens_out} out, cost ${cost:.4f}")
-
+    print(f"Agent: {searches} searches, {fetches} pages read, {tokens_in} tokens in, {tokens_out} out, cost ${cost:.4f}")
     # The answer can be split over several text blocks: glue them together
     text = "".join(block.text for block in response.content if block.type == "text")
     try:
