@@ -3,3 +3,5 @@ pandas
 matplotlib
 anthropic
 python-dotenv
+# pinned: jiter 0.18+ builds are blocked by Windows Smart App Control
+jiter==0.17.0
