@@ -40,7 +40,7 @@ a { color: var(--accent); }   /* links share the accent colour (same blue as the
               box-shadow: 0 0 18px color-mix(in srgb, var(--c) 35%, transparent); }
 .tile:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
 .tile-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
-.tile-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-name { font-weight: 600; min-width: 0; }   /* long names wrap to a second line */
 .tile-price { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .tile-change { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
