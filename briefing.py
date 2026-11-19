@@ -188,6 +188,7 @@ img { display: block; width: 100%; height: auto; }
 .stat-value { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat-sub { color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .back { margin: 1.25rem 0 0; font-size: 0.85rem; }
+.home { margin: 0 0 1rem; font-size: 0.85rem; }
 
 .footnote { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border);
             padding-top: 1rem; margin-top: 2rem; }
@@ -642,6 +643,7 @@ def build_page(results, agent_answer):
 </head>
 <body>
 <main>
+  <p class="home"><a href="https://lauvanosch-ctrl.github.io/">&larr; Back to portfolio</a></p>
   <h1>Market briefing</h1>
   <p class="subtitle">Closing prices up to {newest_date:%A %d %B %Y}. Generated on {created:%d %B %Y at %H:%M}.</p>
   {summary_html(agent_answer, significant)}
