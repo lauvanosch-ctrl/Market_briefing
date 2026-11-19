@@ -78,6 +78,17 @@ FUNDS = [
     {"name": "Sif Holding N.V.", "symbol": "SIFG.AS",
      "about": "Dutch maker of steel monopile foundations for offshore wind, factory in Rotterdam. "
               "Moves on offshore wind contracts, production output, financing and sector news."},
+    {"name": "C.D. Projekt Red S.A.", "symbol":"CDR.WA",
+    "about": "Polish game developer mostly know from the Witcher and Cyberpunk"},
+    {"name": "Alphabet Inc.", "symbol": "GOOG",
+     "about": "Its core search, YouTube, and fast-growing Google Cloud businesses generate massive cash flow, though heavy AI infrastructure CapEx is currently weighing on free cash flow and investor sentiment."
+     "Key catalysts include AI monetization, custom TPU demand, and Alphabet's stake in Anthropic ahead of its IPO."},
+    {"name": "VanEck Electrification and Power Infrastructure", "symbol": "PIKA.L",
+     "about": "An accumulating exchange-traded fund tracking global companies in electrification, power grids, and energy storage."
+     "e.g. Siemens AG, SChneider Electric SE and ABB Ltd."},
+     {"name": "VanEck Quantum Computing", "symbol": "QNTM.MI",
+      "about": "an accumulating exchange-traded fund that invests globally in companies involved in quantum computing and related technologies."
+      "e.g. IonQ, D-Wave Quantum, Synopsys, IBM"},
 ]
 
 SIGMA_THRESHOLD = 2
