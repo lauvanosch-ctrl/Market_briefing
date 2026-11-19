@@ -9,7 +9,9 @@ and a Claude agent with web search explains *why* the flagged funds moved. Outpu
 .venv\Scripts\python briefing.py
 ```
 Best run time on weekdays is about 09:15-09:30, when Yahoo has filled in the European closes.
-Output: `briefing.html` and `charts/*.svg` (both gitignored).
+Output: `docs/briefing.html` and `docs/charts/*.svg`. These ARE committed: GitHub Pages serves `docs/`
+as the live demo at https://lauvanosch-ctrl.github.io/Market_briefing/briefing.html.
+The venv uses python.org Python 3.13; `jiter==0.17.0` is pinned because newer builds are blocked by Smart App Control.
 
 ## How briefing.py is organised
 1. Settings: `SYSTEM_PROMPT`, `AGENT_MODEL`, `PRICES`, `FUNDS` (name, symbol, about), `SIGMA_THRESHOLD = 2`.
