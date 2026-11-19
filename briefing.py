@@ -82,9 +82,9 @@ FUNDS = [
 
 SIGMA_THRESHOLD = 2
 
-CHART_DIR = Path(__file__).parent / "charts"
+CHART_DIR = Path(__file__).parent / "docs" /"charts"
 # C:\Users\lauva\Documents\Market_briefing\charts   
-PAGE_FILE = Path(__file__).parent / "briefing.html"        
+PAGE_FILE = Path(__file__).parent / "docs" / "briefing.html"        
 
 
 CSS = """
@@ -350,7 +350,7 @@ def make_charts(result):
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
 
-    CHART_DIR.mkdir(exist_ok=True)
+    CHART_DIR.mkdir(parents=True, exist_ok=True)    
     path = CHART_DIR / f"{slug(result['symbol'])}.svg"
     fig.savefig(path, bbox_inches="tight", transparent=True)
     plt.close(fig)

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Market briefing 18 Nov 2026</title>
+  <style>
+:root { --bg: #121826; --surface: #1B2333; --border: #2A3446; --text: #E6EAF2; --muted: #8B95A7;
+        --up: #34C77B; --down: #F2555A; --accent: #8B7CFF; --alert: #FFC93C; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font-family: "Segoe UI", system-ui, sans-serif; line-height: 1.5; }
+main { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+h1 { font-size: 2.8rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.subtitle { color: var(--muted); margin: 0.25rem 0 2rem; }
+a { color: #A99CFF; }
+
+/* direction colour: every fund and tile gets pos or neg from today's move */
+.pos { --c: var(--up); }
+.neg { --c: var(--down); }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+/* summary and watchlist */
+.summary { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+           padding: 1rem 1.25rem; margin: 0 0 1.5rem; }
+.summary h2, .why h3, .watch-head h2 { font-size: 1.3rem; font-weight: 700; }
+.summary h2 { margin: 0 0 0.4rem; }
+.summary p { margin: 0; }
+.ai-label { color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem !important; }
+.watch-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; }
+.watch-head h2 { margin: 0; }
+.watch-head span { color: var(--muted); font-size: 0.85rem; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 2rem; }
+.tile { display: block; text-decoration: none; color: var(--text); background: var(--surface);
+        border: 1px solid var(--border); border-left: 4px solid var(--c); border-radius: 8px;
+        padding: 0.65rem 0.8rem; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.tile:hover { background: color-mix(in srgb, var(--c) 14%, var(--surface)); border-color: var(--c);
+              box-shadow: 0 0 18px color-mix(in srgb, var(--c) 35%, transparent); }
+.tile:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+.tile-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
+.tile-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-price { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.tile-change { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+/* one fund */
+.group-title { color: var(--muted); font-size: 0.85rem; font-weight: 600; margin: 2rem 0 0.5rem; }
+.fund { border-top: 1px solid var(--border); scroll-margin-top: 1rem; }
+.fund-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+             gap: 0.5rem; padding: 1rem 0.5rem 1rem 0.9rem; cursor: pointer; list-style: none;
+             border-left: 4px solid transparent; border-radius: 0 6px 6px 0;
+             transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.fund-head::-webkit-details-marker { display: none; }
+.fund-head h2 { font-size: 1.7rem; margin: 0; transition: color 0.15s; }
+.fund-head h2::before { content: ""; display: inline-block; width: 0.4em; height: 0.4em;
+                        margin-right: 0.7em; vertical-align: 0.2em;
+                        border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+                        transform: rotate(-45deg); transition: transform 0.15s, border-color 0.15s; }
+.fund[open] .fund-head h2::before { transform: rotate(45deg); }
+.fund-head:hover { border-left-color: var(--c); background: color-mix(in srgb, var(--c) 9%, transparent);
+                   box-shadow: 0 0 22px color-mix(in srgb, var(--c) 22%, transparent); }
+.fund-head:hover h2 { color: var(--c); }
+.fund-head:hover h2::before { border-color: var(--c); }
+.fund-head:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+.tag { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-left: 0.5rem; }
+.tag.sigma { color: var(--c); }
+.alert { display: inline-flex; align-items: center; justify-content: center;
+         width: 1.25em; height: 1.25em; margin-left: 0.6rem; border-radius: 50%;
+         background: var(--alert); color: #1A1E27; font-size: 0.85rem; font-weight: 800;
+         vertical-align: 0.15em; }
+.price { margin: 0; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fund-body { padding: 0 0 1.5rem 0.9rem; }
+
+.why { background: var(--surface); border-left: 4px solid var(--accent); border-radius: 6px;
+       padding: 0.8rem 1rem; margin: 0 0 1rem; }
+.why h3 { margin: 0 0 0.3rem; }
+.why p { margin: 0; }
+.sources { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem !important; }
+.sources a { margin-right: 0.6rem; }
+.stale { background: #3A2E14; border-left: 4px solid #C77700; color: #F2D9A6; font-size: 0.9rem;
+         padding: 0.6rem 1rem; border-radius: 6px; margin: 0 0 1rem; }
+
+.chart { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+         padding: 0.5rem 0.75rem; margin: 0 0 0.5rem; }
+img { display: block; width: 100%; height: auto; }
+
+.group { color: var(--muted); font-size: 0.8rem; font-weight: 600; margin: 1.1rem 0 0.4rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 0.6rem; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+        padding: 0.55rem 0.75rem; }
+.stat-label { color: var(--muted); font-size: 0.78rem; }
+.stat-value { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-sub { color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.back { margin: 1.25rem 0 0; font-size: 0.85rem; }
+
+.footnote { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border);
+            padding-top: 1rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Market briefing</h1>
+  <p class="subtitle">Closing prices up to Wednesday 18 November 2026. Generated on 19 November 2026 at 09:53.</p>
+  <section class="summary"><h2>Today in brief</h2><p>European shares fell sharply on Tuesday 17 November, with the STOXX 600 down about 1.75% and technology stocks leading the decline. The weakness then carried into 18 November, when the AEX, S&amp;P 500 and NVIDIA also slipped.</p><p class="ai-label">Written by an AI agent from news sources. Check the links below.</p></section>
+  <section id="watchlist"><div class="watch-head"><h2>Watchlist</h2><span>7 funds · 1 significant</span></div><div class="tiles"><a class="tile neg" href="#fund-AEX"><div class="tile-top"><span class="tile-name">AEX</span></div><div class="tile-price">1,098.73</div><div class="tile-change"><span class="down">-1.01%</span></div></a><a class="tile neg" href="#fund-AVTX_AS"><div class="tile-top"><span class="tile-name">Avantium N.V.</span></div><div class="tile-price">1.65</div><div class="tile-change"><span class="down">-3.17%</span></div></a><a class="tile neg" href="#fund-NVDA"><div class="tile-top"><span class="tile-name">NVIDIA</span></div><div class="tile-price">150.96</div><div class="tile-change"><span class="down">-2.89%</span></div></a><a class="tile neg" href="#fund-GSPC"><div class="tile-top"><span class="tile-name">S&P 500</span></div><div class="tile-price">7,323.63</div><div class="tile-change"><span class="down">-0.23%</span></div></a><a class="tile neg" href="#fund-SIFG_AS"><div class="tile-top"><span class="tile-name">Sif Holding N.V.</span></div><div class="tile-price">1.85</div><div class="tile-change"><span class="down">-4.15%</span></div></a><a class="tile neg" href="#fund-DFEN_DE"><div class="tile-top"><span class="tile-name">VanEck Defense</span></div><div class="tile-price">48.54</div><div class="tile-change"><span class="down">-1.85%</span></div></a><a class="tile neg" href="#fund-VEUR_AS"><div class="tile-top"><span class="tile-name">Vanguard FTSE Dev. Europe</span><span class="alert" title="Significant move">!</span></div><div class="tile-price">50.39</div><div class="tile-change"><span class="down">-1.72%</span></div></a></div></section>
+  
+<details class="fund neg" id="fund-VEUR_AS" open>
+  <summary class="fund-head">
+    <h2>Vanguard FTSE Dev. Europe<span class="alert" title="Significant move">!</span><span class="tag sigma">-2.5σ</span></h2>
+    <p class="price">50.39 <span class="down">-1.72%</span></p>
+  </summary>
+  <div class="fund-body">
+    <p class="stale">This fund shows the close of 17 Nov. A newer close was not available yet.</p>
+    <div class="why"><h3>Why it moved</h3><p>The likely driver was a broad European sell-off led by technology shares on 17 November, not a fund-specific event. New US limits on advanced AI chip sales to China, plus caution before NVIDIA&#x27;s results after the US close, pushed investors to cut risk, and the STOXX 600 finished down about 1.75% with tech stocks off roughly 3.9%. Reports also pointed to Deutsche Bank&#x27;s slide on leaked-document reports, Middle East tensions and political uncertainty in France as weighing on sentiment, though the fund&#x27;s 1.72% drop is consistent with the market-wide move.</p><p class="sources">Sources: <a href="https://www.marketscreener.com/news/european-stocks-mark-worst-day-in-eight-months-on-ai-jitters-deutsche-bank-slides-ce785edcdd8df723" target="_blank" rel="noopener noreferrer">marketscreener.com</a> <a href="https://www.bloomberg.com/news/articles/2026-11-17/european-stocks-fall-as-us-chip-curbs-ignite-fresh-ai-selloff" target="_blank" rel="noopener noreferrer">bloomberg.com</a> <a href="https://rockandturner.substack.com/p/tue-nov-17-2026-the-market-today" target="_blank" rel="noopener noreferrer">rockandturner.substack.com</a> <a href="https://journalarta.com/en/2026/11/17/european-shares-fall-deutsche-bank-tech-stocks-nvidia/" target="_blank" rel="noopener noreferrer">journalarta.com</a></p></div>
+    <div class="chart"><img src="charts/VEUR_AS.svg" alt="Price of Vanguard FTSE Dev. Europe over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-1.12%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="up">+1.07%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-0.51%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="up">+12.54%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-2.06%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Uptrend</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">49.66</div><div class="stat-sub">price <span class="up">+1.46%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">48.36</div><div class="stat-sub">price <span class="up">+4.19%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">17.9</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+<p class="group-title">Other funds</p>
+<details class="fund neg" id="fund-AEX">
+  <summary class="fund-head">
+    <h2>AEX</h2>
+    <p class="price">1,098.73 <span class="down">-1.01%</span></p>
+  </summary>
+  <div class="fund-body">
+    
+    
+    <div class="chart"><img src="charts/AEX.svg" alt="Price of AEX over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-4.05%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-3.86%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-0.78%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="up">+15.50%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-4.05%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Mixed</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">1,122.48</div><div class="stat-sub">price <span class="down">-2.12%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">1,065.53</div><div class="stat-sub">price <span class="up">+3.12%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">n/a</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+
+<details class="fund neg" id="fund-GSPC">
+  <summary class="fund-head">
+    <h2>S&P 500</h2>
+    <p class="price">7,323.63 <span class="down">-0.23%</span></p>
+  </summary>
+  <div class="fund-body">
+    
+    
+    <div class="chart"><img src="charts/GSPC.svg" alt="Price of S&P 500 over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-3.88%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-4.38%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-4.79%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="up">+6.98%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-6.33%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Mixed</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">7,648.51</div><div class="stat-sub">price <span class="down">-4.25%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">7,346.55</div><div class="stat-sub">price <span class="down">-0.31%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">n/a</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+
+<details class="fund neg" id="fund-DFEN_DE">
+  <summary class="fund-head">
+    <h2>VanEck Defense<span class="tag">17 Nov</span></h2>
+    <p class="price">48.54 <span class="down">-1.85%</span></p>
+  </summary>
+  <div class="fund-body">
+    <p class="stale">This fund shows the close of 17 Nov. A newer close was not available yet.</p>
+    
+    <div class="chart"><img src="charts/DFEN_DE.svg" alt="Price of VanEck Defense over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-4.68%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-5.63%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-17.26%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="down">-7.07%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-24.25%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Downtrend</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">51.22</div><div class="stat-sub">price <span class="down">-5.22%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">54.63</div><div class="stat-sub">price <span class="down">-11.13%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">n/a</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+
+<details class="fund neg" id="fund-NVDA">
+  <summary class="fund-head">
+    <h2>NVIDIA</h2>
+    <p class="price">150.96 <span class="down">-2.89%</span></p>
+  </summary>
+  <div class="fund-body">
+    
+    
+    <div class="chart"><img src="charts/NVDA.svg" alt="Price of NVIDIA over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-13.11%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-29.50%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-31.22%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="down">-18.87%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-36.90%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Mixed</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">210.30</div><div class="stat-sub">price <span class="down">-28.22%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">203.45</div><div class="stat-sub">price <span class="down">-25.80%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">16.2</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+
+<details class="fund neg" id="fund-AVTX_AS">
+  <summary class="fund-head">
+    <h2>Avantium N.V.</h2>
+    <p class="price">1.65 <span class="down">-3.17%</span></p>
+  </summary>
+  <div class="fund-body">
+    
+    
+    <div class="chart"><img src="charts/AVTX_AS.svg" alt="Price of Avantium N.V. over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-14.51%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-65.73%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-76.53%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="down">-75.89%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-82.74%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Downtrend</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">3.77</div><div class="stat-sub">price <span class="down">-56.23%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">6.23</div><div class="stat-sub">price <span class="down">-73.51%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">n/a</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+
+<details class="fund neg" id="fund-SIFG_AS">
+  <summary class="fund-head">
+    <h2>Sif Holding N.V.</h2>
+    <p class="price">1.85 <span class="down">-4.15%</span></p>
+  </summary>
+  <div class="fund-body">
+    
+    
+    <div class="chart"><img src="charts/SIFG_AS.svg" alt="Price of Sif Holding N.V. over the last year, with 50- and 200-day averages"></div>
+    <p class="group">Performance</p>
+    <div class="stats"><div class="stat"><div class="stat-label">1 week</div><div class="stat-value"><span class="down">-5.82%</span></div></div><div class="stat"><div class="stat-label">1 month</div><div class="stat-value"><span class="down">-33.12%</span></div></div><div class="stat"><div class="stat-label">3 months</div><div class="stat-value"><span class="down">-50.84%</span></div></div><div class="stat"><div class="stat-label">YTD</div><div class="stat-value"><span class="down">-72.61%</span></div></div><div class="stat"><div class="stat-label">From 52-week high</div><div class="stat-value"><span class="down">-76.75%</span></div></div></div>
+    <p class="group">Trend and valuation</p>
+    <div class="stats"><div class="stat"><div class="stat-label">Trend</div><div class="stat-value">Downtrend</div></div><div class="stat"><div class="stat-label">50-day average</div><div class="stat-value">2.78</div><div class="stat-sub">price <span class="down">-33.69%</span></div></div><div class="stat"><div class="stat-label">200-day average</div><div class="stat-value">4.96</div><div class="stat-sub">price <span class="down">-62.75%</span></div></div><div class="stat"><div class="stat-label">P/E</div><div class="stat-value">n/a</div></div></div>
+    <p class="back"><a href="#watchlist">Back to watchlist</a></p>
+  </div>
+</details>
+  <p class="footnote">
+    A move is significant when it is at least 2 standard deviations (σ) away from the
+    average daily move of the previous 60 trading days. YTD is the change since the last close of
+    the previous year. Colours show the move on the last trading day: green is up, red is down.
+    Data: Yahoo Finance. The explanations are written by an AI agent (claude-haiku-5-5) that searches
+    the web; they can contain mistakes, so check the sources. This page explains what happened
+    and is not investment advice.
+  </p>
+</main>
+<script>
+document.querySelectorAll(".tile").forEach(function (tile) {
+  tile.addEventListener("click", function () {
+    var fund = document.querySelector(tile.getAttribute("href"));
+    if (fund) fund.open = true;      // a closed fund opens when you jump to it
+  });
+});
+</script>
+</body>
+</html>

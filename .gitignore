@@ -6,5 +6,5 @@ __pycache__/
 .env
 
 # Generated output: the script recreates these on every run
-charts/
-briefing.html
+/charts/
+/briefing.html
