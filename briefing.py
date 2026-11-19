@@ -316,8 +316,9 @@ def make_charts(result):
     ma50 = result["ma50_series"].loc[start:]
     ma200 = result["ma200_series"].loc[start:]
 
-    # colours that match the dark page
-    text_color, grid_color, line_color = "#8B95A7", "#2A3446", "#8B7CFF"
+    # colours that match the dark page; red/green stay reserved for daily moves
+    text_color, grid_color, surface_color = "#8B95A7", "#2A3446", "#1B2333"
+    price_color, ma50_color, ma200_color = "#5AA9FF", "#F5B94A", "#E879B9"
 
     # matplotlib handles dates without a time zone best, so we strip it for the chart
     dates = close.index.tz_localize(None)
@@ -328,27 +329,33 @@ def make_charts(result):
     bottom = low - 0.05 * (high - low)
 
     fig, ax = plt.subplots(figsize=(8, 3.6))
-    ax.plot(dates, ma200, color="#4FC3D9", linewidth=1.2, linestyle="--", alpha=0.85, label="200-day average")
-    ax.plot(dates, ma50, color="#F5B94A", linewidth=1.2, linestyle="--", alpha=0.85, label="50-day average")
-    ax.plot(dates, close, color=line_color, linewidth=2, label="Closing price")
-    ax.fill_between(dates, close, bottom, color=line_color, alpha=0.13)   # soft fill under the price
+    ax.plot(dates, close, color=price_color, linewidth=2, label="Closing price", zorder=3)
+    ax.plot(dates, ma50, color=ma50_color, linewidth=1.2, linestyle="--", label="50-day average")
+    ax.plot(dates, ma200, color=ma200_color, linewidth=1.2, linestyle="--", label="200-day average")
+    ax.fill_between(dates, close, bottom, color=price_color, alpha=0.07)   # soft fill under the price
     ax.set_ylim(bottom, high + 0.05 * (high - low))
+    ax.set_xlim(dates[0], dates[-1] + pd.Timedelta(days=4))   # end the plot just after the last close
 
-    # dot and label on the last close (no chart title: the name is in the header)
+    # dot on the last close, and a price tag just outside the right edge of the plot
     last = close.iloc[-1]
-    ax.plot(dates[-1], last, "o", color=line_color, markersize=6)
-    ax.annotate(f"{last:,.2f}", (dates[-1], last), xytext=(-8, 10), textcoords="offset points",
-                ha="right", color="#E6EAF2", fontsize=9, fontweight="bold")
+    ax.plot(dates[-1], last, "o", color=price_color, markersize=7, zorder=4)
+    ax.annotate(f"{last:,.2f}", xy=(1, last), xycoords=("axes fraction", "data"),
+                xytext=(6, 0), textcoords="offset points", ha="left", va="center",
+                color=surface_color, fontsize=9, fontweight="bold",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=price_color, edgecolor="none"),
+                annotation_clip=False)
 
     ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, frameon=False, fontsize=9,
               labelcolor=text_color)
-    ax.grid(axis="y", color=grid_color, linewidth=0.8)
+    ax.grid(axis="y", color=grid_color, linewidth=0.6)
     ax.set_axisbelow(True)
     ax.spines[["top", "right", "left"]].set_visible(False)
     ax.spines["bottom"].set_color(grid_color)
     ax.tick_params(length=0, labelsize=9, colors=text_color)
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    # thousands separator for big prices (7,324), two decimals for small ones (1.65)
+    ax.yaxis.set_major_formatter(lambda v, pos: f"{v:,.0f}" if high >= 100 else f"{v:,.2f}")
 
     CHART_DIR.mkdir(parents=True, exist_ok=True)    
     path = CHART_DIR / f"{slug(result['symbol'])}.svg"
