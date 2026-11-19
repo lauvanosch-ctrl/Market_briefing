@@ -380,30 +380,6 @@ def make_charts(result):
     plt.close(fig)
     return path
 
-
-results = []
-
-
-for fund in FUNDS:
-    result = analyze(fund["symbol"])
-    if result is None:
-        continue                     # skip this fund, go to the next one
-    result["name"] = fund["name"]
-    result["about"] = fund.get("about", "")
-    result["chart"] = make_charts(result)
-    results.append(result)
-
-# Significant funds first. sort() is stable: within each group the FUNDS order is kept.
-results.sort(key=lambda r: not r["significant"])
-
-# Print a summary table
-for r in results:
-    flag = "<-- SIGNIFICANT" if r["significant"] else ""
-    print(f"{r['name']:<27} {r['date']:%d %b}  {r['close']:>10.2f}  {r['change_1d']:+6.2f}%   z = {r['z']:+.1f}  {flag}")
-    pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
-    print(f"{r['name']:<27} {r['trend']:<10} P/E: {pe_text}")
-
-
 def describe_fund(r):
     """One fund as a few lines of plain text, for the agent to read."""
     pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
@@ -472,15 +448,6 @@ def ask_agent(agent_input, max_searches):
         print("Could not read the agent's answer as JSON. Raw answer:")
         print(text)
         return None
-
-significant = [r for r in results if r["significant"]]
-max_searches = min(2 * len(significant) + 1, 8)
-agent_answer = None
-if significant:
-    agent_answer = ask_agent(build_agent_input(results), max_searches)
-    print(json.dumps(agent_answer, indent=2))
-else:
-    print("No significant moves: the agent is not called.")
 
 def pct(value):
     """Format a percentage with a + or - sign, coloured green or red."""
@@ -679,5 +646,41 @@ def build_page(results, agent_answer):
     PAGE_FILE.write_text(html, encoding="utf-8")
     return PAGE_FILE
 
-page = build_page(results, agent_answer)
-print(f"Briefing saved: {page}")
+# === Run the briefing
+def main():
+    """Fetch the data, ask the agent about significant moves and build the page."""
+    results = []
+    for fund in FUNDS:
+        result = analyze(fund["symbol"])
+        if result is None:
+            continue                     # skip this fund, go to the next one
+        result["name"] = fund["name"]
+        result["about"] = fund.get("about", "")
+        result["chart"] = make_charts(result)
+        results.append(result)
+
+    # Significant funds first. sort() is stable: within each group the FUNDS order is kept.
+    results.sort(key=lambda r: not r["significant"])
+
+    # Print a summary table
+    for r in results:
+        flag = "<-- SIGNIFICANT" if r["significant"] else ""
+        print(f"{r['name']:<27} {r['date']:%d %b}  {r['close']:>10.2f}  {r['change_1d']:+6.2f}%   z = {r['z']:+.1f}  {flag}")
+        pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
+        print(f"{r['name']:<27} {r['trend']:<10} P/E: {pe_text}")
+
+    significant = [r for r in results if r["significant"]]
+    max_searches = min(2 * len(significant) + 1, 8)
+    agent_answer = None
+    if significant:
+        agent_answer = ask_agent(build_agent_input(results), max_searches)
+        print(json.dumps(agent_answer, indent=2))
+    else:
+        print("No significant moves: the agent is not called.")
+
+    page = build_page(results, agent_answer)
+    print(f"Briefing saved: {page}")
+
+
+if __name__ == "__main__":
+    main()
