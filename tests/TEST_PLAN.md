@@ -3,6 +3,8 @@
 Rules for every test: no internet, no API calls, no cost, and no writing into `docs/`.
 The whole set should run in about a second with `pytest`.
 
+Status (2026-11-19): phase 1 and phase 2 are written and pass (30 tests). Phase 3 is still open.
+
 ## Phase 1: tests on the current code (no code changes)
 
 | # | Function | Test | Expected |

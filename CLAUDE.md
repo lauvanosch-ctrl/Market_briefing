@@ -36,6 +36,16 @@ The venv uses python.org Python 3.13; `jiter==0.17.0` is pinned because newer bu
 - Haiku 5.5 has two rate cards: $0.10/$0.50 per MTok up to a 100K-token prompt, $0.50/$2.50 above it,
   per API call. The printed cost assumes the low card, so a large run can be underestimated: check the Console.
 
+## Tests
+```
+.venv\Scripts\python -m pip install -r requirements-dev.txt   # once
+.venv\Scripts\python -m pytest -v
+```
+- `tests/test_briefing.py`: 30 tests, offline and free, about 3 seconds. Plan and expected values: `tests/TEST_PLAN.md`.
+- A: formatting, source links and escaping of AI text. C: `analyze()` with a fake `yf.Ticker` via `monkeypatch`
+  (z-score, trend, 52-week high, short history, P/E).
+- Still open: D (whole chain into `tmp_path`), and testing the agent JSON parsing.
+
 ## Principles
 - Python does the arithmetic and detection; the LLM only explains.
 - Cost guardrails: no agent call on quiet days, search cap, cheapest good-enough model, cost printed.

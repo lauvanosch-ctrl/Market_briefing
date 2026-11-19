@@ -133,3 +133,74 @@ def test_summary_with_ai_text_is_escaped_and_labelled():
     html = briefing.summary_html({"market_summary": "Stocks <b>rose</b>."}, [NVIDIA])
     assert "Stocks &lt;b&gt;rose&lt;/b&gt;." in html
     assert "Written by an AI" in html
+
+    # --- C1-C6: analyze() with a fake Yahoo --------------------------------------
+
+def fake_yahoo(monkeypatch, prices, pe=15.0):
+    """Make briefing.analyze() see our made-up prices instead of asking Yahoo Finance."""
+    dates = pd.bdate_range(end="2026-11-17", periods=len(prices))   # working days only
+
+    class FakeTicker:
+        def __init__(self, symbol):
+            self.info = {"trailingPE": pe}
+
+        def history(self, period):
+            return pd.DataFrame({"Close": prices}, index=dates)
+
+    monkeypatch.setattr(briefing.yf, "Ticker", FakeTicker)
+
+
+def calm_then(last_move):
+    """70 calm days (alternating +1% and -1%), then one day that moves `last_move` percent."""
+    prices = [100.0]
+    for day in range(70):
+        prices.append(prices[-1] * (1.01 if day % 2 == 0 else 0.99))
+    prices.append(prices[-1] * (1 + last_move / 100))
+    return prices
+
+
+def test_big_rise_is_significant(monkeypatch):
+    fake_yahoo(monkeypatch, calm_then(+5))
+    result = briefing.analyze("TEST")
+    assert result["z"] == pytest.approx(4.96, abs=0.01)
+    assert result["significant"]
+
+
+def test_normal_day_is_not_significant(monkeypatch):
+    fake_yahoo(monkeypatch, calm_then(+1))
+    result = briefing.analyze("TEST")
+    assert result["z"] == pytest.approx(0.99, abs=0.01)
+    assert not result["significant"]
+
+
+def test_big_fall_is_significant_too(monkeypatch):
+    fake_yahoo(monkeypatch, calm_then(-5))
+    result = briefing.analyze("TEST")
+    assert result["z"] == pytest.approx(-4.96, abs=0.01)
+    assert result["significant"]
+
+
+@pytest.mark.parametrize("prices, trend", [
+    ([100 + day for day in range(300)], "Uptrend"),
+    ([400 - day for day in range(300)], "Downtrend"),
+])
+def test_trend_from_moving_averages(monkeypatch, prices, trend):
+    fake_yahoo(monkeypatch, prices)
+    assert briefing.analyze("TEST")["trend"] == trend
+
+
+def test_distance_from_52_week_high(monkeypatch):
+    fake_yahoo(monkeypatch, [100] * 100 + [120] + [100] * 50 + [90])
+    assert briefing.analyze("TEST")["from_high"] == pytest.approx(-25.0)
+
+
+def test_short_history_does_not_crash(monkeypatch):
+    # A newly listed stock: only 30 days. z is computed over the days that exist.
+    fake_yahoo(monkeypatch, [100 + day % 3 for day in range(30)])
+    result = briefing.analyze("TEST")
+    assert not result["significant"]
+
+
+def test_pe_is_passed_through(monkeypatch):
+    fake_yahoo(monkeypatch, calm_then(+1), pe=21.5)
+    assert briefing.analyze("TEST")["pe"] == 21.5
