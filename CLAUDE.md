@@ -45,6 +45,7 @@ The venv uses python.org Python 3.13; `jiter==0.17.0` is pinned because newer bu
 - A: formatting, source links and escaping of AI text. C: `analyze()` with a fake `yf.Ticker` via `monkeypatch`
   (z-score, trend, 52-week high, short history, P/E).
 - Still open: D (whole chain into `tmp_path`), and testing the agent JSON parsing.
+- New features: write the test first (expected values from hand calculation), see it fail, then write the code.
 
 ## Principles
 - Python does the arithmetic and detection; the LLM only explains.
