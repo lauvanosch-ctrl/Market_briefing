@@ -136,9 +136,9 @@ def test_summary_with_ai_text_is_escaped_and_labelled():
 
     # --- C1-C6: analyze() with a fake Yahoo --------------------------------------
 
-def fake_yahoo(monkeypatch, prices, pe=15.0):
+def fake_yahoo(monkeypatch, prices, pe=15.0, end="2026-11-17"):
     """Make briefing.analyze() see our made-up prices instead of asking Yahoo Finance."""
-    dates = pd.bdate_range(end="2026-11-17", periods=len(prices))   # working days only
+    dates = pd.bdate_range(end=end, periods=len(prices))   # working days only
 
     class FakeTicker:
         def __init__(self, symbol):
@@ -204,3 +204,23 @@ def test_short_history_does_not_crash(monkeypatch):
 def test_pe_is_passed_through(monkeypatch):
     fake_yahoo(monkeypatch, calm_then(+1), pe=21.5)
     assert briefing.analyze("TEST")["pe"] == 21.5
+
+
+# --- New listings: too little history ---------------------------------------
+
+def test_listed_today_is_skipped(monkeypatch):
+    # Only today's (unfinished) row exists: after dropping it, nothing is left.
+    today = pd.Timestamp.now().normalize()
+    fake_yahoo(monkeypatch, [100.0], end=today)
+    assert briefing.analyze("NEW") is None
+
+
+@pytest.mark.parametrize("days", [1, 2, 19])
+def test_too_little_history_is_skipped(monkeypatch, days):
+    fake_yahoo(monkeypatch, [100.0 + day for day in range(days)])
+    assert briefing.analyze("NEW") is None
+
+
+def test_exactly_enough_history_is_analyzed(monkeypatch):
+    fake_yahoo(monkeypatch, [100.0 + day for day in range(briefing.MIN_HISTORY_DAYS)])
+    assert briefing.analyze("NEW") is not None

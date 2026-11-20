@@ -54,6 +54,7 @@ AGENT_MODEL = "claude-haiku-5-5"
 AGENT_EFFORT = "high"   # how hard the agent thinks: "low", "medium" (default) or "high"
 MAX_FETCHES = 5         # how many full articles the agent may read per run
 
+
 PRICES = {  # $ per million tokens: (input, output)
     "claude-haiku-5-5": (0.10, 0.50),
     "claude-sonnet-5-5": (2.00, 10.00),
@@ -94,8 +95,12 @@ FUNDS = [
      {"name": "VanEck Quantum Computing", "symbol": "QNTM.MI",
       "about": "an accumulating exchange-traded fund that invests globally in companies involved in quantum computing and related technologies."
       "e.g. IonQ, D-Wave Quantum, Synopsys, IBM"},
+      {"name":  "Anthropic", "symbol": "ANT",
+       "about": "Is an artificial intelligence research company best know for their model Claude. It is sensitive"
+       "to AI sentiment in the marker."},
 ]
 
+MIN_HISTORY_DAYS = 20   # a new listing is skipped until it has this many finished trading days
 SIGMA_THRESHOLD = 2
 
 CHART_DIR = Path(__file__).parent / "docs" /"charts"
@@ -249,6 +254,9 @@ def analyze(symbol):
     # Safety check: keep only the days before today, because today isn't finished yet
     today = pd.Timestamp.now(tz=close.index.tz).normalize()
     close = close[close.index < today]
+    if len(close) < MIN_HISTORY_DAYS:
+        print(f"{symbol}: only {len(close)} finished trading days, need {MIN_HISTORY_DAYS}. Skipped for now.")
+        return None
 #select the last two days to calculate percentual difference.
     latest=close.iloc[-1]
     previous=close.iloc[-2]
