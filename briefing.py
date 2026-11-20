@@ -125,6 +125,7 @@ a { color: var(--accent); }   /* links share the accent colour (same blue as the
 .neg { --c: var(--down); }
 .up { color: var(--up); }
 .down { color: var(--down); }
+.na { color: #8A94A6; }
 
 /* summary and watchlist */
 .summary { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
@@ -254,15 +255,11 @@ def analyze(symbol):
     # Safety check: keep only the days before today, because today isn't finished yet
     today = pd.Timestamp.now(tz=close.index.tz).normalize()
     close = close[close.index < today]
-    if len(close) < MIN_HISTORY_DAYS:
-        print(f"{symbol}: only {len(close)} finished trading days, need {MIN_HISTORY_DAYS}. Skipped for now.")
+    if close.empty:
+        print(f"{symbol}: no finished trading day yet. Skipped for now.")
         return None
-#select the last two days to calculate percentual difference.
-    latest=close.iloc[-1]
-    previous=close.iloc[-2]
-    day_change=(latest-previous)/previous *100
-    print(f"Latest close: {latest:.2f}")
-    #print(f"Change since yesterday: {day_change:+.2f}%")
+    days = len(close)
+    new_listing = days < MIN_HISTORY_DAYS     # too young for a reliable "normal move"
 
     latest_day=close.index[-1]
     start_of_year=latest_day.replace(month=1,day=1)
@@ -284,7 +281,10 @@ def analyze(symbol):
     mean_move = window.mean()
     normal_move = window.std()
     print(f"mean move: {mean_move:.3f}, normal move: {normal_move:.3f}")
-    z = (daily_change.iloc[-1] - mean_move) / normal_move
+    if new_listing:
+        z = float("nan")     # too few days to know what a normal move is
+    else:
+        z = (daily_change.iloc[-1] - mean_move) / normal_move
     if abs(z)>=SIGMA_THRESHOLD:
         print(f"Significant move of "+symbol)
     else:
@@ -302,7 +302,9 @@ def analyze(symbol):
     ma200 = close.rolling(200).mean()
 
     price = close.iloc[-1]
-    if price > ma50.iloc[-1] > ma200.iloc[-1]:
+    if pd.isna(ma50.iloc[-1]) or pd.isna(ma200.iloc[-1]):
+        trend = "n/a"        # not enough history for both averages
+    elif price > ma50.iloc[-1] > ma200.iloc[-1]:
         trend = "Uptrend"
     elif price < ma50.iloc[-1] < ma200.iloc[-1]:
         trend = "Downtrend"
@@ -332,6 +334,8 @@ def analyze(symbol):
         "ma50_series": ma50,
         "ma200_series": ma200,
         "from_high": from_high,
+        "days": days,
+        "new_listing": new_listing,
     }
 
 #=== Script used for plotting of all the things we want to see
@@ -459,6 +463,8 @@ def ask_agent(agent_input, max_searches):
 
 def pct(value):
     """Format a percentage with a + or - sign, coloured green or red."""
+    if pd.isna(value):
+        return '<span class="na">n/a</span>'
     css_class = "up" if value >= 0 else "down"
     return f'<span class="{css_class}">{value:+.2f}%</span>'
 
@@ -538,7 +544,14 @@ def vs_average(price, average):
 
 def direction(r):
     """'pos' or 'neg': the colour of a fund follows its move on the last day."""
+    if pd.isna(r["change_1d"]):
+        return "flat"
     return "pos" if r["change_1d"] >= 0 else "neg"
+
+
+def number(value):
+    """A price with thousands separators, or n/a when it does not exist yet."""
+    return "n/a" if pd.isna(value) else f"{value:,.2f}"
 
 
 def fund_section(r, newest_date, agent_answer):
@@ -554,7 +567,10 @@ def fund_section(r, newest_date, agent_answer):
     open_attr = " open" if r["significant"] else ""
 
     tag = ""
-    if r["significant"]:
+    if r["new_listing"]:
+        day_word = "day" if r["days"] == 1 else "days"
+        tag = f'<span class="tag">New listing · {r["days"]} {day_word}</span>'
+    elif r["significant"]:
         tag = (f'<span class="alert" title="Significant move">!</span>'
                f'<span class="tag sigma">{r["z"]:+.1f}σ</span>')
     elif r["date"].date() < newest_date:
@@ -569,8 +585,8 @@ def fund_section(r, newest_date, agent_answer):
     ])
     trend = "".join([
         stat("Trend", r["trend"]),
-        stat("50-day average", f"{r['ma50']:,.2f}", vs_average(r["close"], r["ma50"])),
-        stat("200-day average", f"{r['ma200']:,.2f}", vs_average(r["close"], r["ma200"])),
+        stat("50-day average", number(r["ma50"]), vs_average(r["close"], r["ma50"])),
+        stat("200-day average", number(r["ma200"]), vs_average(r["close"], r["ma200"])),
         stat("P/E", pe_text),
     ])
 

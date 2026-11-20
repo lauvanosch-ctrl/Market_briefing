@@ -1,4 +1,7 @@
 """Tests for briefing.py. They use made-up data: no internet, no API calls, no cost."""
+import re
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -206,21 +209,86 @@ def test_pe_is_passed_through(monkeypatch):
     assert briefing.analyze("TEST")["pe"] == 21.5
 
 
-# --- New listings: too little history ---------------------------------------
+# --- New listings: show them, but honestly -----------------------------------
 
 def test_listed_today_is_skipped(monkeypatch):
-    # Only today's (unfinished) row exists: after dropping it, nothing is left.
+    # T1: only today's (unfinished) row exists: after dropping it, nothing is left to show.
     today = pd.Timestamp.now().normalize()
     fake_yahoo(monkeypatch, [100.0], end=today)
     assert briefing.analyze("NEW") is None
 
 
-@pytest.mark.parametrize("days", [1, 2, 19])
-def test_too_little_history_is_skipped(monkeypatch, days):
+def test_one_day_old_is_shown_without_daily_change(monkeypatch):
+    # T2: one finished day: we know the price, but there is no previous day to compare with.
+    fake_yahoo(monkeypatch, [100.0])
+    result = briefing.analyze("NEW")
+    assert result is not None
+    assert result["close"] == 100.0
+    assert pd.isna(result["change_1d"])
+    assert result["new_listing"]
+    assert result["days"] == 1
+    assert not result["significant"]
+
+
+def test_big_jump_of_new_listing_is_not_flagged(monkeypatch):
+    # T3: +30% on day 5 is huge, but 4 earlier days say nothing about what is "normal".
+    fake_yahoo(monkeypatch, [100.0, 101.0, 102.0, 103.0, 133.9])
+    result = briefing.analyze("NEW")
+    assert result["new_listing"]
+    assert result["days"] == 5
+    assert not result["significant"]
+
+
+def test_ten_days_has_one_week_but_no_one_month_change(monkeypatch):
+    # T4: 10 working days ending Tue 17 Nov 2026 start on Wed 4 Nov.
+    # One week back (Tue 10 Nov) exists: price 100 -> 110 is +10%. One month back does not exist.
+    fake_yahoo(monkeypatch, [100.0] * 9 + [110.0])
+    result = briefing.analyze("NEW")
+    assert result["change_1w"] == pytest.approx(10.0)
+    assert pd.isna(result["change_1m"])
+
+
+def test_trend_needs_both_averages(monkeypatch):
+    # T5: 100 days is enough for the 50-day average but not for the 200-day one.
+    fake_yahoo(monkeypatch, [100.0 + day for day in range(100)])
+    result = briefing.analyze("NEW")
+    assert result["trend"] == "n/a"
+    assert not result["new_listing"]          # 100 days is past the minimum
+
+
+def test_pct_of_missing_value_is_grey_na():
+    # T6
+    html = briefing.pct(float("nan"))
+    assert "n/a" in html
+    assert "nan%" not in html
+    assert 'class="down"' not in html
+
+
+def test_exactly_minimum_history_is_a_normal_fund(monkeypatch):
+    # T7: the edge of the rule: exactly MIN_HISTORY_DAYS days counts as enough.
+    days = briefing.MIN_HISTORY_DAYS
     fake_yahoo(monkeypatch, [100.0 + day for day in range(days)])
-    assert briefing.analyze("NEW") is None
+    result = briefing.analyze("NEW")
+    assert not result["new_listing"]
+    assert result["days"] == days
 
 
-def test_exactly_enough_history_is_analyzed(monkeypatch):
-    fake_yahoo(monkeypatch, [100.0 + day for day in range(briefing.MIN_HISTORY_DAYS)])
-    assert briefing.analyze("NEW") is not None
+def test_page_section_of_new_listing(monkeypatch):
+    # T8: the fund block on the page shows the label and never the word "nan".
+    fake_yahoo(monkeypatch, [100.0, 101.0, 102.0, 103.0, 104.0])
+    result = briefing.analyze("NEW")
+    result["name"] = "New Co"
+    result["about"] = ""
+    result["chart"] = Path("charts/NEW.svg")
+    html = briefing.fund_section(result, result["date"].date(), None)
+    assert "New listing" in html
+    assert "5 days" in html
+    assert re.search(r"\bnan\b", html) is None
+    assert "σ" not in html                    # no z-score shown for a new listing
+
+
+def test_new_listing_without_daily_move_is_neither_green_nor_red(monkeypatch):
+    # T9: red/green means the last day's move. Without a previous day there is no move: neutral.
+    fake_yahoo(monkeypatch, [100.0])
+    result = briefing.analyze("NEW")
+    assert briefing.direction(result) == "flat"
