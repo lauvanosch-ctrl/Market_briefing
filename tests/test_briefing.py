@@ -1,6 +1,7 @@
 """Tests for briefing.py. They use made-up data: no internet, no API calls, no cost."""
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -139,9 +140,11 @@ def test_summary_with_ai_text_is_escaped_and_labelled():
 
     # --- C1-C6: analyze() with a fake Yahoo --------------------------------------
 
-def fake_yahoo(monkeypatch, prices, pe=15.0, end="2026-11-17"):
-    """Make briefing.analyze() see our made-up prices instead of asking Yahoo Finance."""
-    dates = pd.bdate_range(end=end, periods=len(prices))   # working days only
+def fake_yahoo(monkeypatch, prices, pe=15.0, end="2026-11-17", dates=None):
+    """Make briefing.analyze() see our made-up prices instead of asking Yahoo Finance.
+    By default the prices get working days ending on `end`; pass `dates` to set them exactly."""
+    if dates is None:
+        dates = pd.bdate_range(end=end, periods=len(prices))   # working days only
 
     class FakeTicker:
         def __init__(self, symbol):
@@ -213,8 +216,9 @@ def test_pe_is_passed_through(monkeypatch):
 
 def test_listed_today_is_skipped(monkeypatch):
     # T1: only today's (unfinished) row exists: after dropping it, nothing is left to show.
+    # The date is set exactly: a working-day range would move a weekend "today" back to Friday.
     today = pd.Timestamp.now().normalize()
-    fake_yahoo(monkeypatch, [100.0], end=today)
+    fake_yahoo(monkeypatch, [100.0], dates=pd.DatetimeIndex([today]))
     assert briefing.analyze("NEW") is None
 
 
@@ -292,3 +296,89 @@ def test_new_listing_without_daily_move_is_neither_green_nor_red(monkeypatch):
     fake_yahoo(monkeypatch, [100.0])
     result = briefing.analyze("NEW")
     assert briefing.direction(result) == "flat"
+
+# --- Busy days: explain only the largest moves -------------------------------
+
+def make_fund(name, z, significant=True):
+    """A made-up analyze() result with every field the agent input and the page need."""
+    return {
+        "name": name, "symbol": name.upper(), "about": "", "date": pd.Timestamp("2026-11-20"),
+        "close": 100.0, "change_1d": -2.0, "change_1w": -3.0, "change_1m": -1.0,
+        "change_3m": 4.0, "change_ytd": 10.0, "z": z, "significant": significant,
+        "trend": "Mixed", "from_high": -5.0, "pe": None,
+    }
+
+
+Z_VALUES = [2.1, -4.0, 3.0, -2.5, 2.2, -3.5, 2.0, 5.0]
+BUSY_DAY = [make_fund(f"Fund{i}", z) for i, z in enumerate(Z_VALUES)]
+
+
+def test_only_largest_moves_are_explained():
+    # T1: of 8 significant funds, the 5 with the largest |z|, largest first. A fall counts too.
+    chosen = briefing.funds_to_explain(BUSY_DAY)
+    assert [r["z"] for r in chosen] == [5.0, -4.0, -3.5, 3.0, -2.5]
+
+
+def test_quiet_funds_are_never_explained():
+    # T2: 3 significant and 2 normal funds: only the 3 significant ones.
+    funds = [make_fund("A", 2.5), make_fund("B", -3.0), make_fund("C", 2.0),
+             make_fund("D", 1.0, significant=False), make_fund("E", -0.5, significant=False)]
+    assert {r["name"] for r in briefing.funds_to_explain(funds)} == {"A", "B", "C"}
+
+
+def test_agent_input_lists_the_rest_as_context():
+    # T3: Fund7 (z +5.0) is explained; Fund6 (z +2.0) is only context.
+    text = briefing.build_agent_input(BUSY_DAY)
+    explain_part, context_part = text.split("OTHER FUNDS")
+    assert "Fund7" in explain_part
+    assert "Fund6" not in explain_part
+    assert "Fund6" in context_part
+
+
+def test_significant_but_not_explained_says_why():
+    # T4
+    fund = make_fund("Fund6", 2.0)
+    fund["explained"] = False
+    html = briefing.why_html(fund, {"explanations": {}})
+    assert f"only the {briefing.MAX_EXPLAINED} largest moves" in html
+
+
+# --- ask_agent() with a fake Anthropic client (no API call, no cost) ---------
+
+def fake_anthropic(monkeypatch, text, stop_reason="end_turn"):
+    """Make briefing.ask_agent() talk to a fake client. Returns the list of requests it sent."""
+    sent = []
+
+    class FakeMessages:
+        def create(self, **request):
+            sent.append(request)
+            usage = SimpleNamespace(input_tokens=1000, output_tokens=500, server_tool_use=None)
+            return SimpleNamespace(stop_reason=stop_reason, usage=usage,
+                                   content=[SimpleNamespace(type="text", text=text)])
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(briefing.anthropic, "Anthropic", FakeClient)
+    return sent
+
+
+def test_cut_off_answer_gives_none(monkeypatch):
+    # T5: the answer stopped at max_tokens before the JSON was finished.
+    fake_anthropic(monkeypatch, 'I will search first. {"market_summary": "Stocks fe', stop_reason="max_tokens")
+    assert briefing.ask_agent("numbers", max_searches=3) is None
+
+
+def test_agent_gets_enough_room_to_answer(monkeypatch):
+    # T6
+    sent = fake_anthropic(monkeypatch, '{"market_summary": "x", "explanations": {}}')
+    briefing.ask_agent("numbers", max_searches=3)
+    assert sent[0]["max_tokens"] == 16000
+
+
+def test_json_is_found_between_other_text(monkeypatch):
+    # T7: the model often writes a sentence before the JSON.
+    fake_anthropic(monkeypatch, 'Here is the briefing:\n{"market_summary": "Stocks fell.", "explanations": {}}\nDone.')
+    answer = briefing.ask_agent("numbers", max_searches=3)
+    assert answer["market_summary"] == "Stocks fell."

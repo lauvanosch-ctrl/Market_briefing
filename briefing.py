@@ -33,6 +33,8 @@ Rules:
 - If you cannot find a clear reason, say so. Never invent one.
 - Never give buy or sell advice.
 - Keep each explanation to 2-3 sentences of plain English.
+- If several funds moved the same way on the same day, explain the shared cause once in
+  market_summary, and keep each fund's explanation to what is specific to that fund.
 - Only state figures that appear in your sources, and make sure they are for the right day.
 - Briefly mention a major theme from the past week if it explains today's move.
 - Confirm the main cause of each move with at least two independent sources
@@ -101,6 +103,7 @@ FUNDS = [
 ]
 
 MIN_HISTORY_DAYS = 20   # a new listing is skipped until it has this many finished trading days
+MAX_EXPLAINED = 5       # on busy days only the largest moves get an AI explanation (cost guardrail)
 SIGMA_THRESHOLD = 2
 
 CHART_DIR = Path(__file__).parent / "docs" /"charts"
@@ -405,10 +408,18 @@ def describe_fund(r):
     )
 
 
+def funds_to_explain(results):
+    """The significant funds the agent explains: at most MAX_EXPLAINED, largest |z| first."""
+    significant = [r for r in results if r["significant"]]
+    significant.sort(key=lambda r: abs(r["z"]), reverse=True)
+    return significant[:MAX_EXPLAINED]
+
+
 def build_agent_input(results):
     """Everything the agent needs to know, as one piece of text."""
-    significant = [r for r in results if r["significant"]]
-    others = [r for r in results if not r["significant"]]
+    significant = funds_to_explain(results)
+    explained = {r["symbol"] for r in significant}
+    others = [r for r in results if r["symbol"] not in explained]
     text = f"Today is {date.today():%A %d %B %Y}.\n\nSIGNIFICANT MOVES (explain these):\n\n"
     text += "\n\n".join(describe_fund(r) for r in significant)
     text += "\n\nOTHER FUNDS (context only, to judge whether a move is market-wide):\n"
@@ -425,7 +436,7 @@ def ask_agent(agent_input, max_searches):
     for _ in range(3):  # the agent may pause during a long search session; then we let it continue
         response = client.messages.create(
             model=AGENT_MODEL,
-            max_tokens=8000,
+            max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=messages,
             output_config={"effort": AGENT_EFFORT},
@@ -519,7 +530,9 @@ def why_html(r, agent_answer):
                 entry = explanations[key]
                 break
     text = entry.get("text") if isinstance(entry, dict) else None
-    if isinstance(text, str) and text.strip():
+    if r.get("explained") is False:
+        body = f"<p>Not explained today: only the {MAX_EXPLAINED} largest moves get an AI explanation.</p>"
+    elif isinstance(text, str) and text.strip():
         body = f'<p>{escape(text)}</p>{sources_html(entry.get("sources"))}'
     elif agent_answer is None:
         body = "<p>The explanation is not available today.</p>"
@@ -693,10 +706,12 @@ def main():
         pe_text = f"{r['pe']:.1f}" if r["pe"] is not None else "n/a"
         print(f"{r['name']:<27} {r['trend']:<10} P/E: {pe_text}")
 
-    significant = [r for r in results if r["significant"]]
-    max_searches = min(2 * len(significant) + 1, 8)
+    explained = funds_to_explain(results)
+    for r in results:
+        r["explained"] = any(r is e for e in explained)   # "is": the same fund, not just equal values
+    max_searches = min(2 * len(explained) + 1, 8)
     agent_answer = None
-    if significant:
+    if explained:
         agent_answer = ask_agent(build_agent_input(results), max_searches)
         print(json.dumps(agent_answer, indent=2))
     else:
