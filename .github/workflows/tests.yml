@@ -1,0 +1,18 @@
+name: Tests
+
+on:
+  push:                 #Every push to any branch
+  pull_request:
+  workflow_dispatch:    #Adds a run workflow button in the action tabs
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5      #Copies repro into the runner  
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"      #same version as on this laptop
+          cache: pip                  #reuses download so future loads are faster
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -v
