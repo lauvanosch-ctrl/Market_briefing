@@ -1,7 +1,9 @@
 name: Daily briefing
 
 on:
-  workflow_dispatch:        # manual "Run workflow" button; the schedule comes later
+  schedule:
+    - cron: "05 11 * * 2-6"  # 08:20 UTC, Tue-Sat = 09:20 NL in winter, 10:20 in summer
+  workflow_dispatch:        # keep the manual button too
 
 permissions:
   contents: write           # allows this workflow to push the new docs/ commit
