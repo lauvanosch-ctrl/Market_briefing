@@ -5,12 +5,25 @@ and a Claude agent with web search explains *why* the flagged funds moved. Outpu
 `briefing.html` with a watchlist, per-fund explanation, chart and key stats.
 
 ## Run
+The briefing runs by itself on GitHub Actions (see Automation). By hand:
 ```
 .venv\Scripts\python briefing.py
 ```
-Best run time on weekdays is about 09:15-09:30, when Yahoo has filled in the European closes.
 Output: `docs/briefing.html` and `docs/charts/*.svg`. These ARE committed: GitHub Pages serves `docs/`
 as the live demo at https://lauvanosch-ctrl.github.io/Market_briefing/briefing.html.
+
+## Automation (GitHub Actions)
+- `.github/workflows/tests.yml`: `pytest` on every push and pull request (green or red check on GitHub).
+- `.github/workflows/briefing.yml`: runs `briefing.py` Tue-Sat at 11:05 UTC (12:05 NL in winter, 13:05 in summer),
+  then commits `docs/` as github-actions[bot], which refreshes the live demo. Manual start: Actions tab ->
+  Daily briefing -> Run workflow.
+- Why Tue-Sat and late morning: `analyze()` drops today's unfinished row, so each run covers the previous
+  trading day (Saturday covers Friday), and by then Yahoo has the closes of the slower indices too.
+- The API key is the repository secret `ANTHROPIC_API_KEY` (Settings -> Secrets and variables -> Actions).
+  An empty secret is passed as an empty string and gives `401 Invalid bearer token`.
+- If a run fails, nothing is committed: yesterday's page stays online and GitHub emails you.
+- The bot commits every run: always `git pull` before starting work, or your push is rejected.
+- GitHub can start scheduled runs 5-30 minutes late. Cron is in UTC and ignores daylight saving.
 The venv uses python.org Python 3.13; `jiter==0.17.0` is pinned because newer builds are blocked by Smart App Control.
 
 ## How briefing.py is organised
@@ -41,7 +54,7 @@ The venv uses python.org Python 3.13; `jiter==0.17.0` is pinned because newer bu
 .venv\Scripts\python -m pip install -r requirements-dev.txt   # once
 .venv\Scripts\python -m pytest -v
 ```
-- `tests/test_briefing.py`: 30 tests, offline and free, about 3 seconds. Plan and expected values: `tests/TEST_PLAN.md`.
+- `tests/test_briefing.py`: 46 tests, offline and free, a few seconds; they also run on GitHub on every push. Plan and expected values: `tests/TEST_PLAN.md`.
 - A: formatting, source links and escaping of AI text. C: `analyze()` with a fake `yf.Ticker` via `monkeypatch`
   (z-score, trend, 52-week high, short history, P/E).
 - Still open: D (whole chain into `tmp_path`), and testing the agent JSON parsing.
