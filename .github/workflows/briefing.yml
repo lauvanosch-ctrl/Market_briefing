@@ -2,7 +2,7 @@ name: Daily briefing
 
 on:
   schedule:
-    - cron: "05 11 * * 2-6"  # 08:20 UTC, Tue-Sat = 09:20 NL in winter, 10:20 in summer
+    - cron: "05 11 * * 2-6"  # 11:05 UTC, Tue-Sat = 12:05 NL in winter, 13:05 in summer
   workflow_dispatch:        # keep the manual button too
 
 permissions:
